@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin – Secret Santa</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{font-family:Inter,system-ui,sans-serif;background:radial-gradient(ellipse at top,#14532d 0%,#0b2a1a 60%,#071a10 100%);min-height:100vh;color:#fdf6e3}
+  .card{background:rgba(255,255,255,.07);border:1px solid rgba(245,197,66,.35);border-radius:1rem}
+  input{background:rgba(0,0,0,.35);border:1px solid rgba(245,197,66,.4);color:#fff;border-radius:.5rem;padding:.4rem .6rem}
+  .gold{background:linear-gradient(135deg,#f5c542,#d99a1a);color:#3b2a00}.red{background:#b91c2e;color:#fff}
+  td,th{padding:.5rem;text-align:left;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.1)}
+</style>
+</head>
+<body>
+<main class="relative z-10 max-w-6xl mx-auto p-4">
+  <h1 class="text-2xl text-amber-300 font-bold my-4">🎅 Panel administratora</h1>
+
+  <section id="login" class="card p-5 max-w-sm space-y-3">
+    <input id="pw" type="password" placeholder="Hasło admina" class="w-full">
+    <p id="err" class="text-red-300 text-sm"></p>
+    <button id="lbtn" class="gold w-full py-2 rounded-lg font-semibold">Zaloguj</button>
+  </section>
+
+  <section id="panel" class="hidden">
+    <div class="flex flex-wrap gap-2 mb-4">
+      <button id="reset" class="red px-4 py-2 rounded-lg font-semibold">Wygeneruj / Resetuj losowanie</button>
+      <button id="csv" class="gold px-4 py-2 rounded-lg font-semibold">Pobierz tabelę do Excela (.csv)</button>
+      <button id="copy" class="px-4 py-2 rounded-lg border border-amber-300/50">Kopiuj PIN-y</button>
+      <button id="refresh" class="px-4 py-2 rounded-lg border border-amber-300/50">Odśwież</button>
+    </div>
+    <div class="card p-3 overflow-x-auto">
+      <table class="w-full text-sm min-w-[800px]">
+        <thead><tr><th>Uczestnik</th><th>PIN</th><th>Kogo wylosował</th><th>Status</th><th>Życzenia uczestnika</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="fx.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let PW = sessionStorage.getItem('adminpw'), DATA = [];
+async function api(p, opt = {}) {
+  const r = await fetch('/api/admin/' + p, { ...opt, headers: { 'content-type': 'application/json', 'x-admin': PW } });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Błąd'); return j;
+}
+function el(tag, props = {}, text) { const e = document.createElement(tag); Object.assign(e, props); if (text != null) e.textContent = text; return e; }
+async function load() {
+  DATA = await api('state');
+  $('login').classList.add('hidden'); $('panel').classList.remove('hidden');
+  const tb = $('rows'); tb.innerHTML = '';
+  for (const p of DATA) {
+    const tr = el('tr');
+    tr.append(el('td', {}, p.name), el('td', { className: 'font-mono' }, p.pin), el('td', {}, p.target || '—'), el('td', {}, p.has_drawn ? '✅ Odkrył' : '⏳ Jeszcze nie'), el('td', { className: 'whitespace-pre-wrap max-w-xs' }, p.wish || '—'));
+    tb.append(tr);
+  }
+}
+async function tryLogin() { try { await load(); sessionStorage.setItem('adminpw', PW); } catch (e) { $('err').textContent = e.message; sessionStorage.removeItem('adminpw'); } }
+$('lbtn').onclick = () => { PW = $('pw').value; tryLogin(); };
+$('refresh').onclick = load;
+$('reset').onclick = async () => {
+  if (!confirm('Na pewno? To ułoży NOWE pary i zresetuje statusy odkrycia u wszystkich.')) return;
+  await api('reset', { method: 'POST' }); load();
+};
+$('copy').onclick = () => { navigator.clipboard.writeText(DATA.map((p) => `${p.name}: ${p.pin}`).join('\n')); $('copy').textContent = 'Skopiowano ✓'; setTimeout(() => ($('copy').textContent = 'Kopiuj PIN-y'), 2000); };
+$('csv').onclick = () => {
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
+  const rows = [['Osoba losująca', 'Osoba wylosowana', 'Status odkrycia', 'Życzenia osoby wylosowanej']]
+    .concat(DATA.map((p) => [p.name, p.target, p.has_drawn ? 'Odkryte' : 'Nieodkryte', p.target_wish || '']));
+  const csv = '\uFEFF' + rows.map((r) => r.map(q).join(';')).join('\r\n');
+  const a = el('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: 'secret-santa.csv' });
+  document.body.append(a); a.click(); a.remove();
+};
+if (PW) tryLogin();
+</script>
+</body>
+</html>

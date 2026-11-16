@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Świąteczne Losowanie Prezentów 🎁</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body{font-family:Inter,system-ui,sans-serif;background:radial-gradient(ellipse at top,#14532d 0%,#0b2a1a 60%,#071a10 100%);min-height:100vh;color:#fdf6e3}
+  h1,.title{font-family:'Playfair Display',serif}
+  .card{background:rgba(255,255,255,.07);backdrop-filter:blur(6px);border:1px solid rgba(245,197,66,.35);border-radius:1.25rem}
+  .gold{background:linear-gradient(135deg,#f5c542,#d99a1a);color:#3b2a00}
+  .red{background:linear-gradient(135deg,#d62839,#9d1424);color:#fff}
+  input,select,textarea{background:rgba(0,0,0,.35);border:1px solid rgba(245,197,66,.4);color:#fff;border-radius:.75rem;padding:.7rem .9rem;width:100%}
+  select option{color:#000}
+  @keyframes shake{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg) scale(1.05)}40%{transform:rotate(12deg) scale(1.1)}60%{transform:rotate(-10deg) scale(1.15)}80%{transform:rotate(10deg) scale(1.2)}}
+  @keyframes pop{0%{transform:scale(.2);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+  .shake{animation:shake .9s ease-in-out}.pop{animation:pop .8s ease-out}
+</style>
+</head>
+<body>
+<main class="relative z-10 max-w-md mx-auto p-4 pb-10">
+  <h1 class="title text-3xl text-center text-amber-300 mt-4 mb-1">🎄 Secret Santa 🎄</h1>
+  <p class="text-center text-sm opacity-80 mb-6">Świąteczne losowanie prezentów</p>
+
+  <section id="login" class="card p-5 space-y-3">
+    <label class="block text-sm">Kim jesteś?</label>
+    <input id="who" type="text" placeholder="Wpisz swoje imię..." autocomplete="off" autocapitalize="words" spellcheck="false">
+    <label class="block text-sm">PIN (4 cyfry)</label>
+    <input id="pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    <p id="lerr" class="text-red-300 text-sm min-h-[1.2rem]"></p>
+    <button id="lbtn" class="gold w-full py-3 rounded-xl font-semibold">Wejdź</button>
+  </section>
+
+  <div id="app" class="hidden space-y-5">
+    <div class="flex justify-between items-center">
+      <p>Cześć, <b id="hi" class="text-amber-300"></b>! 👋</p>
+      <button id="out" class="text-xs underline opacity-70">Wyloguj</button>
+    </div>
+
+    <section class="card p-5">
+      <h2 class="title text-xl text-amber-300 mb-2">🎁 Co chcę dostać <span class="text-xs font-normal opacity-70">(opcjonalne)</span></h2>
+      <textarea id="wish" rows="3" maxlength="600" placeholder="Wpisz swoje życzenie lub podpowiedź prezentową..."></textarea>
+      <button id="wbtn" class="gold mt-3 px-5 py-2 rounded-xl font-semibold">Zapisz</button>
+      <span id="wok" class="ml-2 text-sm text-green-300"></span>
+    </section>
+
+    <section class="card p-5 text-center">
+      <h2 class="title text-xl text-amber-300 mb-3">🎅 Moje losowanie</h2>
+      <div id="before">
+        <div id="gift" class="text-8xl select-none mb-4">🎁</div>
+        <button id="draw" class="red w-full py-4 rounded-2xl text-lg font-semibold shadow-lg">Wylosuj osobę</button>
+      </div>
+      <div id="after" class="hidden">
+        <p class="text-sm opacity-80">Twoja osoba do obdarowania:</p>
+        <p id="tname" class="title text-4xl text-amber-300 my-3"></p>
+        <div class="bg-black/30 rounded-xl p-3 text-left">
+          <p class="text-xs opacity-70 mb-1">Co chce dostać:</p>
+          <p id="twish" class="whitespace-pre-wrap"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="fx.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let S = JSON.parse(localStorage.getItem('santa') || 'null');
+const NOWISH = 'Ta osoba nie wpisała jeszcze swoich życzeń – czas na kreatywną niespodziankę!';
+
+async function api(path, opt = {}) {
+  const r = await fetch('/api/' + path, { ...opt, headers: { 'content-type': 'application/json', 'x-user': encodeURIComponent(S.name), 'x-pin': S.pin } });
+  if (r.status === 401) { logout(); throw new Error('auth'); }
+  return r.json();
+}
+function logout() { localStorage.removeItem('santa'); S = null; $('app').classList.add('hidden'); $('login').classList.remove('hidden'); }
+function showTarget(t) {
+  $('tname').textContent = t.name;
+  $('twish').textContent = t.wish && t.wish.trim() ? t.wish : NOWISH;
+  $('before').classList.add('hidden'); $('after').classList.remove('hidden');
+}
+async function load() {
+  const me = await api('me');
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('hi').textContent = me.name; $('wish').value = me.wish;
+  if (me.has_drawn && me.target) showTarget(me.target);
+}
+if (S) load().catch(() => {});
+$('lbtn').onclick = async () => {
+  const name = $('who').value.trim(), pin = $('pin').value.trim();
+  $('lerr').textContent = '';
+  if (!name || !/^\d{4}$/.test(pin)) return ($('lerr').textContent = 'Wpisz imię i 4-cyfrowy PIN');
+  $('lbtn').disabled = true;
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, pin }) });
+    const j = await r.json().catch(() => ({ error: 'Nieprawidłowa odpowiedź serwera (czy funkcje API zostały wdrożone?)' }));
+    if (!r.ok) return ($('lerr').textContent = j.error || 'Błędne imię lub PIN');
+    S = { name: j.name, pin }; localStorage.setItem('santa', JSON.stringify(S)); $('pin').value = ''; $('who').value = '';
+    await load();
+  } catch (e) {
+    $('lerr').textContent = 'Błąd połączenia z serwerem';
+  } finally { $('lbtn').disabled = false; }
+};
+['who', 'pin'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lbtn').click(); }));
+$('out').onclick = logout;
+$('wbtn').onclick = async () => {
+  await api('wish', { method: 'PUT', body: JSON.stringify({ wish: $('wish').value }) });
+  $('wok').textContent = 'Zapisano ✓'; setTimeout(() => ($('wok').textContent = ''), 2000);
+};
+$('draw').onclick = async () => {
+  $('draw').disabled = true; $('gift').classList.add('shake');
+  const [res] = await Promise.all([api('reveal', { method: 'POST' }), new Promise((r) => setTimeout(r, 1100))]);
+  $('gift').textContent = '🎉';
+  setTimeout(() => { showTarget(res.target); $('after').classList.add('pop'); confetti(); }, 250);
+};
+</script>
+</body>
+</html>
